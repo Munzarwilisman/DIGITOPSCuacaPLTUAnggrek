@@ -17,6 +17,7 @@ from streamlit_folium import st_folium
 from bs4 import BeautifulSoup
 import time
 import base64
+import plotly.graph_objects as go
 
 # ReportLab / PDF
 from reportlab.lib.pagesizes import A4
@@ -51,6 +52,14 @@ def load_google_sheet(sheet_name):
         return pd.DataFrame()
 
 # ================================
+# Tombol refresh data manual
+# ================================
+st.sidebar.markdown("### 🔄 Data Control")
+if st.sidebar.button("Refresh Data"):
+    st.cache_data.clear()
+    st.sidebar.success("✅ Cache dibersihkan, data akan diambil ulang!")
+
+# ================================
 # Ambil data curah hujan
 # ================================
 def get_rainfall_data():
@@ -60,12 +69,6 @@ def get_rainfall_data():
         
         if df.empty:
             st.error("⚠️ Data kosong atau gagal dimuat dari Google Sheets.")
-            st.info("""
-            **Tips:**
-            1. Pastikan Google Sheets sudah di-share publicly (Anyone with the link can view)
-            2. Pastikan nama sheet adalah 'Curah Hujan'
-            3. Pastikan ada kolom 'TANGGAL' dan 'Curah Hujan'
-            """)
             return None
         
         # Pastikan kolom yang diperlukan ada
@@ -73,12 +76,12 @@ def get_rainfall_data():
             return df
         else:
             st.error("⚠️ Format data tidak sesuai. Pastikan ada kolom 'TANGGAL' dan 'Curah Hujan'.")
-            st.write("Kolom yang tersedia:", df.columns.tolist())
             return None
 
     except Exception as e:
         st.error(f"⚠️ Error mengambil data curah hujan: {e}")
         return None
+
 # ================================
 # Utility / Data preparation
 # ================================
@@ -99,55 +102,259 @@ def aggregate_data(df, method):
         return df.resample('M').sum()
 
 # ================================
-# EDA / Forecasting / Evaluation
+# EDA / Forecasting / Evaluation (Super Advanced)
 # ================================
 def perform_eda(df, agg_method):
-    st.subheader("📊 Exploratory Data Analysis (EDA)")
+    st.subheader("📊 Exploratory Data Analysis (EDA) - Super Advanced")
+
+    df_plot = df.reset_index()
+
+    # ===== Statistik Deskriptif
     st.write("**Statistik Deskriptif:**")
-    st.write(df.describe())
+    st.dataframe(df.describe())
 
-    # --- Time Series Curah Hujan ---
-    st.write("**Time Series Curah Hujan:**")
-    df_plot = df.reset_index()  # pastikan kolom TANGGAL tersedia
-    fig = px.line(
-        df_plot,
-        x="TANGGAL",
-        y="Curah Hujan",
-        markers=True,
-        title="Time Series Curah Hujan Gorontalo"
-    )
-    fig.update_layout(
-        xaxis_title="Tanggal",
-        yaxis_title="Curah Hujan (mm)",
-        template="plotly_white"
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    # ===== Baris 1: Time Series & Distribusi
+    col1, col2 = st.columns(2)
+    with col1:
+        fig = px.line(
+            df_plot, x="TANGGAL", y="Curah Hujan", markers=True,
+            title="Trend Harian Curah Hujan"
+        )
+        fig.update_layout(template="plotly_dark")
+        st.plotly_chart(fig, use_container_width=True)
+    with col2:
+        fig = px.histogram(
+            df_plot, x="Curah Hujan", nbins=40, marginal="box",
+            title="Distribusi Curah Hujan"
+        )
+        fig.update_layout(template="plotly_dark")
+        st.plotly_chart(fig, use_container_width=True)
 
-    # --- Distribusi Curah Hujan ---
-    st.write("**Distribusi Curah Hujan:**")
-    fig = px.histogram(
-        df_plot,
-        x="Curah Hujan",
-        nbins=50,
-        title="Distribusi Curah Hujan"
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-    # --- Analisis Bulanan ---
-    st.write("**Analisis Bulanan:**")
+    # ===== Baris 2: Analisis Bulanan & Boxplot Bulanan
     monthly = aggregate_data(df, agg_method).reset_index()
-    fig = px.bar(
-        monthly,
-        x="TANGGAL",
-        y="Curah Hujan",
-        title=f"Curah Hujan Bulanan ({agg_method})"
-    )
-    fig.update_layout(
-        xaxis_title="Bulan",
-        yaxis_title="Curah Hujan (mm)",
-        template="plotly_white"
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    col1, col2 = st.columns(2)
+    with col1:
+        fig = px.bar(
+            monthly, x="TANGGAL", y="Curah Hujan",
+            title=f"Curah Hujan Bulanan ({agg_method})"
+        )
+        fig.update_layout(template="plotly_dark")
+        st.plotly_chart(fig, use_container_width=True)
+    with col2:
+        monthly["Bulan"] = monthly["TANGGAL"].dt.strftime("%b-%Y")
+        fig = px.box(
+            monthly, x="Bulan", y="Curah Hujan",
+            title="Boxplot Bulanan (Variasi Curah Hujan)"
+        )
+        fig.update_layout(template="plotly_dark")
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ===== Baris 3: Moving Average & Heatmap Musiman
+    col1, col2 = st.columns(2)
+    with col1:
+        df_plot["MA_7"] = df_plot["Curah Hujan"].rolling(7).mean()
+        df_plot["MA_30"] = df_plot["Curah Hujan"].rolling(30).mean()
+        fig = px.line(
+            df_plot, x="TANGGAL", y=["Curah Hujan", "MA_7", "MA_30"],
+            labels={"value": "Curah Hujan (mm)", "variable": "Series"},
+            title="Trend + Moving Average (7 & 30 hari)"
+        )
+        fig.update_layout(template="plotly_dark")
+        st.plotly_chart(fig, use_container_width=True)
+    with col2:
+        df_plot["Year"] = df_plot["TANGGAL"].dt.year
+        df_plot["Month"] = df_plot["TANGGAL"].dt.month
+        pivot = df_plot.pivot_table(
+            index="Month", columns="Year", values="Curah Hujan", aggfunc="mean"
+        )
+        fig = px.imshow(
+            pivot, aspect="auto", color_continuous_scale="Blues",
+            labels=dict(x="Tahun", y="Bulan", color="Curah Hujan"),
+            title="Heatmap Musiman Curah Hujan"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ===== Baris 4: Autocorrelation & Seasonal Decomposition
+    from statsmodels.graphics.tsaplots import plot_acf
+    import matplotlib.pyplot as plt
+    from statsmodels.tsa.seasonal import seasonal_decompose
+
+    col1, col2 = st.columns(2)
+    with col1:
+        fig, ax = plt.subplots(figsize=(5,3))
+        plot_acf(df["Curah Hujan"].dropna(), ax=ax, lags=30)
+        ax.set_title("Autocorrelation Function (ACF)")
+        st.pyplot(fig)
+    with col2:
+        try:
+            decomposition = seasonal_decompose(
+                monthly.set_index("TANGGAL")["Curah Hujan"], model="additive"
+            )
+            fig = decomposition.plot()
+            fig.set_size_inches(7,5)
+            st.pyplot(fig)
+        except Exception as e:
+            st.warning(f"Gagal dekomposisi musiman: {e}")
+
+    # ===== Baris 5: Extreme Events (Top Curah Hujan & Scatter dengan highlight)
+    col1, col2 = st.columns(2)
+    with col1:
+        top5 = df_plot.nlargest(5, "Curah Hujan")
+        fig = px.scatter(
+            df_plot, x="TANGGAL", y="Curah Hujan",
+            title="Scatter Plot Curah Hujan (Extreme Events Highlight)",
+            color="Curah Hujan", color_continuous_scale="Blues"
+        )
+        fig.add_scatter(
+            x=top5["TANGGAL"], y=top5["Curah Hujan"],
+            mode="markers+text", text=top5["Curah Hujan"].round(1),
+            textposition="top center",
+            marker=dict(color="red", size=12, symbol="star"),
+            name="Top 5 Hujan"
+        )
+        fig.update_layout(template="plotly_dark")
+        st.plotly_chart(fig, use_container_width=True)
+    with col2:
+        # KDE density plot (pakai histogram dengan curve)
+        fig = px.histogram(
+            df_plot, x="Curah Hujan", nbins=50, histnorm="probability density",
+            marginal="violin", title="Distribusi + KDE Curah Hujan"
+        )
+        fig.update_layout(template="plotly_dark")
+        st.plotly_chart(fig, use_container_width=True)
+
+     # ===== Baris 6: Dua Animasi Curah Hujan =====
+    st.subheader("🎬 Animasi Curah Hujan")
+    
+    # Animasi 1: Tren Bulanan per Tahun
+    monthly = aggregate_data(df, agg_method).reset_index()
+    monthly["Tahun"] = monthly["TANGGAL"].dt.year
+    monthly["Bulan"] = monthly["TANGGAL"].dt.strftime("%b")
+    
+    # Buat urutan bulan yang benar
+    bulan_urutan = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    monthly['Bulan'] = pd.Categorical(monthly['Bulan'], categories=bulan_urutan, ordered=True)
+
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # ANIMASI 1: Line Chart dengan Plotly
+        fig_anim = px.line(
+            monthly,
+            x="Bulan",
+            y="Curah Hujan",
+            color="Tahun",
+            animation_frame="Tahun",
+            title="📈 Animasi Tren Curah Hujan Bulanan per Tahun",
+            markers=True,
+            template="plotly_dark",
+            category_orders={"Bulan": bulan_urutan}
+        )
+
+        # Konfigurasi animasi untuk berjalan otomatis
+        fig_anim.layout.updatemenus[0].buttons[0].args[1]["frame"]["duration"] = 1000
+        fig_anim.layout.updatemenus[0].buttons[0].args[1]["transition"]["duration"] = 500
+        fig_anim.layout.updatemenus[0].buttons[0].args[1]["mode"] = "immediate"
+
+        # Tambahkan style
+        fig_anim.update_layout(
+            xaxis_title="Bulan",
+            yaxis_title="Curah Hujan (mm)",
+            legend_title="Tahun",
+            font=dict(size=12, color="white"),
+            plot_bgcolor="black",
+            paper_bgcolor="black",
+            height=400,
+            # Autoplay animation
+            updatemenus=[dict(
+                type="buttons",
+                showactive=False,
+                buttons=[dict(
+                    label="Play",
+                    method="animate",
+                    args=[None, {
+                        "frame": {"duration": 1000, "redraw": True},
+                        "fromcurrent": True, 
+                        "transition": {"duration": 500, "easing": "linear"}
+                    }]
+                )]
+            )]
+        )
+        st.plotly_chart(fig_anim, use_container_width=True)
+
+    with col2:
+        # ANIMASI 2: Scatter Plot dengan efek tetesan hujan
+        fig_anim2 = px.scatter(
+            monthly,
+            x="Bulan",
+            y="Curah Hujan",
+            color="Tahun",
+            animation_frame="Tahun",
+            title="💧 Animasi Tetesan Hujan per Tahun",
+            size="Curah Hujan",
+            size_max=30,
+            template="plotly_dark",
+            category_orders={"Bulan": bulan_urutan},
+            hover_name="Tahun",
+            hover_data={"Bulan": True, "Curah Hujan": ":.1f", "Tahun": True}
+        )
+
+        # Konfigurasi animasi untuk berjalan otomatis
+        fig_anim2.layout.updatemenus[0].buttons[0].args[1]["frame"]["duration"] = 800
+        fig_anim2.layout.updatemenus[0].buttons[0].args[1]["transition"]["duration"] = 400
+        fig_anim2.layout.updatemenus[0].buttons[0].args[1]["mode"] = "immediate"
+
+        # Tambahkan style untuk animasi 2
+        fig_anim2.update_layout(
+            xaxis_title="Bulan",
+            yaxis_title="Curah Hujan (mm)",
+            legend_title="Tahun",
+            font=dict(size=12, color="white"),
+            plot_bgcolor="black",
+            paper_bgcolor="black",
+            height=400,
+            # Autoplay animation
+            updatemenus=[dict(
+                type="buttons",
+                showactive=False,
+                buttons=[dict(
+                    label="Play",
+                    method="animate",
+                    args=[None, {
+                        "frame": {"duration": 800, "redraw": True},
+                        "fromcurrent": True, 
+                        "transition": {"duration": 400, "easing": "quadratic-in-out"}
+                    }]
+                )]
+            )]
+        )
+        st.plotly_chart(fig_anim2, use_container_width=True)
+
+    # JavaScript untuk auto-play kedua animasi
+    auto_play_script = """
+    <script>
+    function autoPlayAnimations() {
+        // Tunggu hingga chart selesai dimuat
+        setTimeout(function() {
+            // Cari semua tombol play dan klik otomatis
+            var playButtons = window.parent.document.querySelectorAll('[data-title="Play"]');
+            playButtons.forEach(function(btn) {
+                btn.click();
+            });
+        }, 2000);
+    }
+    // Jalankan saat halaman dimuat
+    if (window.addEventListener) {
+        window.addEventListener("load", autoPlayAnimations, false);
+    } else if (window.attachEvent) {
+        window.attachEvent("onload", autoPlayAnimations);
+    }
+    </script>
+    """
+    st.components.v1.html(auto_play_script, height=0)
+
+
     
 # Forecast
 def forecast_rainfall(df, model_type, forecast_period, agg_method):
@@ -251,6 +458,7 @@ def plot_forecast(df, forecast, model_type, agg_method):
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
 
 
 def evaluate_model(df, model_type, agg_method):
