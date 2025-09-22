@@ -52,34 +52,27 @@ def load_google_sheet(sheet_name):
         st.error(f"⚠️ Gagal memuat data dari sheet {sheet_name}: {str(e)}")
         return pd.DataFrame()
 
+# ================================
+# Ambil data curah hujan
+# ================================
 def get_rainfall_data():
     """Ambil data curah hujan dari Google Sheets"""
     try:
-        client = setup_google_sheets()
-        if client is None:
-            st.error("Tidak dapat terhubung ke Google Sheets")
+        df = load_google_sheet("Curah Hujan")
+        
+        if df.empty:
+            st.error("⚠️ Data kosong atau gagal dimuat dari Google Sheets.")
             return None
-        
-        # Buka spreadsheet berdasarkan ID
-        spreadsheet_id = "15d3TQ1fCuWtjXzu2vIfUPFdqK54UDn0A8xcIZPNM99k"
-        spreadsheet = client.open_by_key(spreadsheet_id)
-        
-        # Ambil data dari sheet pertama
-        worksheet = spreadsheet.get_worksheet(0)
-        data = worksheet.get_all_records()
-        
-        # Konversi ke DataFrame
-        df = pd.DataFrame(data)
         
         # Pastikan kolom yang diperlukan ada
         if 'TANGGAL' in df.columns and 'Curah Hujan' in df.columns:
             return df
         else:
-            st.error("Format data tidak sesuai. Pastikan kolom 'TANGGAL' dan 'Curah Hujan' ada di Google Sheets.")
+            st.error("⚠️ Format data tidak sesuai. Pastikan ada kolom 'TANGGAL' dan 'Curah Hujan'.")
             return None
-            
+
     except Exception as e:
-        st.error(f"Error mengambil data dari Google Sheets: {e}")
+        st.error(f"⚠️ Error mengambil data curah hujan: {e}")
         return None
 
 # ================================
@@ -88,7 +81,8 @@ def get_rainfall_data():
 def clean_data(df):
     df['Curah Hujan'] = df['Curah Hujan'].replace(['#NA', '-', 'NA', np.nan], 0)
     df['Curah Hujan'] = df['Curah Hujan'].astype(str).str.replace(',', '.').astype(float)
-    df['TANGGAL'] = pd.to_datetime(df['TANGGAL'], dayfirst=True)
+    df['TANGGAL'] = pd.to_datetime(df['TANGGAL'], dayfirst=True, errors='coerce')
+    df = df.dropna(subset=['TANGGAL'])
     df.set_index('TANGGAL', inplace=True)
     return df
 
