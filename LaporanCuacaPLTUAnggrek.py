@@ -171,15 +171,87 @@ def forecast_rainfall(df, model_type, forecast_period, agg_method):
     return forecast
 
 def plot_forecast(df, forecast, model_type, agg_method):
+    # Agregasi data bulanan
     monthly_data = aggregate_data(df, agg_method)
     last_date = monthly_data.index[-1]
-    forecast_dates = pd.date_range(start=last_date + pd.DateOffset(months=1), periods=len(forecast), freq='M')
+
+    # Buat index untuk hasil forecast
+    forecast_dates = pd.date_range(
+        start=last_date + pd.DateOffset(months=1),
+        periods=len(forecast),
+        freq='M'
+    )
     forecast_df = pd.DataFrame({'Date': forecast_dates, 'Forecast': forecast})
     forecast_df.set_index('Date', inplace=True)
 
-    fig = px.line(x=monthly_data.index, y=monthly_data['Curah Hujan'], labels={'x':'Tanggal','y':'Curah Hujan'}, title=f'Forecast Curah Hujan - Model {model_type} ({agg_method})')
-    fig.add_scatter(x=forecast_df.index, y=forecast_df['Forecast'], mode='lines', name='Forecast')
+    # Buat figure dengan data aktual
+    fig = px.line(
+        x=monthly_data.index,
+        y=monthly_data['Curah Hujan'],
+        labels={'x': 'Tanggal', 'y': 'Curah Hujan (mm)'}
+    )
+
+    # Ubah trace data aktual → biru terang
+    fig.update_traces(
+        line=dict(color='#00BFFF', width=2.5),
+        name="Data Aktual"
+    )
+
+    # Forecast → oranye terang putus-putus
+    fig.add_scatter(
+        x=forecast_df.index,
+        y=forecast_df['Forecast'],
+        mode='lines',
+        line=dict(color='#FFA500', width=2.5, dash='dot'),
+        name='Forecast'
+    )
+
+    # Forecast shading transparan
+    fig.add_scatter(
+        x=forecast_df.index,
+        y=forecast_df['Forecast'],
+        mode='lines',
+        line=dict(width=0),
+        fill='tozeroy',
+        fillcolor='rgba(255,165,0,0.15)',
+        showlegend=False
+    )
+
+    # Layout gaya chart saham (dark theme)
+    fig.update_layout(
+        template="plotly_dark",
+        plot_bgcolor="black",
+        paper_bgcolor="black",
+        font=dict(color="white"),
+        title=dict(
+            text=f'📊 Forecast Curah Hujan - Model {model_type} ({agg_method})',
+            x=0.5,  # judul di tengah
+            xanchor="center",
+            font=dict(size=20, color="white", family="Arial Black")
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        margin=dict(l=40, r=40, t=80, b=40),
+        xaxis=dict(
+            showgrid=False,
+            zeroline=False,
+            showline=True,
+            linecolor="rgba(255,255,255,0.4)"
+        ),
+        yaxis=dict(
+            showgrid=True,
+            gridcolor="rgba(255,255,255,0.15)",
+            zeroline=False
+        )
+    )
+
     st.plotly_chart(fig, use_container_width=True)
+
 
 def evaluate_model(df, model_type, agg_method):
     monthly_data = aggregate_data(df, agg_method)
