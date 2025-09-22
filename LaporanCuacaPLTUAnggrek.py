@@ -36,20 +36,39 @@ from google.oauth2.service_account import Credentials
 @st.cache_data
 def load_google_sheet(sheet_name):
     try:
-        url = "https://docs.google.com/spreadsheets/d/15d3TQ1fCuWtjXzu2vIfUPFdqK54UDn0A8xcIZPNM99k/export?format=xlsx"
-        response = requests.get(url)
+        # Ganti format URL - coba dengan format yang berbeda
+        url = "https://docs.google.com/spreadsheets/d/15d3TQ1fCuWtjXzu2vIfUPFdqK54UDn0A8xcIZPNM99k/export?format=xlsx&id=15d3TQ1fCuWtjXzu2vIfUPFdqK54UDn0A8xcIZPNM99k"
+        
+        # Tambahkan headers untuk menangani permission
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        response = requests.get(url, headers=headers, timeout=30)
         
         if response.status_code != 200:
-            raise Exception(
-                f"Gagal mengunduh file dari Google Sheet untuk sheet {sheet_name}. "
-                f"Status code: {response.status_code}"
-            )
+            st.warning(f"Status code: {response.status_code}. Mencoba alternatif...")
+            # Coba alternatif URL
+            url_alt = "https://docs.google.com/spreadsheets/d/15d3TQ1fCuWtjXzu2vIfUPFdqK54UDn0A8xcIZPNM99k/export?format=xlsx"
+            response = requests.get(url_alt, headers=headers, timeout=30)
+            
+            if response.status_code != 200:
+                raise Exception(
+                    f"Gagal mengunduh file dari Google Sheet. "
+                    f"Status code: {response.status_code}. "
+                    f"Pastikan spreadsheet sudah di-share publicly."
+                )
         
-        # Membaca langsung sheet tertentu
-        return pd.read_excel(BytesIO(response.content), sheet_name=sheet_name, engine="openpyxl")
+        # Coba dengan openpyxl dulu, jika gagal coba engine lain
+        try:
+            return pd.read_excel(BytesIO(response.content), sheet_name=sheet_name, engine="openpyxl")
+        except Exception as e:
+            st.warning(f"Openpyxl error: {e}. Mencoba engine default...")
+            return pd.read_excel(BytesIO(response.content), sheet_name=sheet_name)
     
     except Exception as e:
         st.error(f"⚠️ Gagal memuat data dari sheet {sheet_name}: {str(e)}")
+        # Return dataframe kosong untuk prevent error
         return pd.DataFrame()
 
 # ================================
@@ -62,6 +81,12 @@ def get_rainfall_data():
         
         if df.empty:
             st.error("⚠️ Data kosong atau gagal dimuat dari Google Sheets.")
+            st.info("""
+            **Tips:**
+            1. Pastikan Google Sheets sudah di-share publicly (Anyone with the link can view)
+            2. Pastikan nama sheet adalah 'Curah Hujan'
+            3. Pastikan ada kolom 'TANGGAL' dan 'Curah Hujan'
+            """)
             return None
         
         # Pastikan kolom yang diperlukan ada
@@ -69,12 +94,12 @@ def get_rainfall_data():
             return df
         else:
             st.error("⚠️ Format data tidak sesuai. Pastikan ada kolom 'TANGGAL' dan 'Curah Hujan'.")
+            st.write("Kolom yang tersedia:", df.columns.tolist())
             return None
 
     except Exception as e:
         st.error(f"⚠️ Error mengambil data curah hujan: {e}")
         return None
-
 # ================================
 # Utility / Data preparation
 # ================================
