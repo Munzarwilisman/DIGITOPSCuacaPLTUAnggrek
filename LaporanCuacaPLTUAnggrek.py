@@ -33,42 +33,21 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # ====== LOAD DATA ======
-@st.cache_data
 def load_google_sheet(sheet_name):
     try:
-        # Ganti format URL - coba dengan format yang berbeda
-        url = "https://docs.google.com/spreadsheets/d/15d3TQ1fCuWtjXzu2vIfUPFdqK54UDn0A8xcIZPNM99k/export?format=xlsx&id=15d3TQ1fCuWtjXzu2vIfUPFdqK54UDn0A8xcIZPNM99k"
-        
-        # Tambahkan headers untuk menangani permission
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-        
-        response = requests.get(url, headers=headers, timeout=30)
-        
+        url = "https://docs.google.com/spreadsheets/d/15d3TQ1fCuWtjXzu2vIfUPFdqK54UDn0A8xcIZPNM99k/export?format=xlsx"
+        response = requests.get(url)
+
         if response.status_code != 200:
-            st.warning(f"Status code: {response.status_code}. Mencoba alternatif...")
-            # Coba alternatif URL
-            url_alt = "https://docs.google.com/spreadsheets/d/15d3TQ1fCuWtjXzu2vIfUPFdqK54UDn0A8xcIZPNM99k/export?format=xlsx"
-            response = requests.get(url_alt, headers=headers, timeout=30)
-            
-            if response.status_code != 200:
-                raise Exception(
-                    f"Gagal mengunduh file dari Google Sheet. "
-                    f"Status code: {response.status_code}. "
-                    f"Pastikan spreadsheet sudah di-share publicly."
-                )
-        
-        # Coba dengan openpyxl dulu, jika gagal coba engine lain
-        try:
-            return pd.read_excel(BytesIO(response.content), sheet_name=sheet_name, engine="openpyxl")
-        except Exception as e:
-            st.warning(f"Openpyxl error: {e}. Mencoba engine default...")
-            return pd.read_excel(BytesIO(response.content), sheet_name=sheet_name)
-    
+            raise Exception(
+                f"Gagal mengunduh file dari Google Sheet untuk sheet {sheet_name}. "
+                f"Status code: {response.status_code}"
+            )
+
+        return pd.read_excel(BytesIO(response.content), sheet_name=sheet_name, engine="openpyxl")
+
     except Exception as e:
         st.error(f"⚠️ Gagal memuat data dari sheet {sheet_name}: {str(e)}")
-        # Return dataframe kosong untuk prevent error
         return pd.DataFrame()
 
 # ================================
